@@ -1,0 +1,47 @@
+name: CI/CD Pipeline  # Name of the workflow
+
+on:
+  push:
+    branches:
+      - main  # Triggers the workflow when changes are pushed to the 'main' branch
+
+jobs:
+  build:  # First job: Build the Docker image
+    runs-on: ubuntu-latest  # The job runs on the latest version of Ubuntu
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2  # Checks out your repository code
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1  # Sets up Docker Buildx, which allows for building multi-platform images
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1  # Logs into Docker Hub using credentials stored as GitHub secrets
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}  # Docker Hub username from GitHub secrets
+        password: ${{ secrets.DOCKER_PASSWORD }}  # Docker Hub password from GitHub secrets
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2  # Builds the Docker image and pushes it to Docker Hub
+      with:
+        context: .  # The context is the root directory of the repository
+        tags: yourdockerhubusername/yourappname:latest  # Tags the image for Docker Hub
+
+  deploy:  # Second job: Deploy the Docker image to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build  # This job depends on the 'build' job, so it runs after the build completes successfully
+
+    steps:
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v1  # Installs and sets up kubectl for interacting with the Kubernetes cluster
+      with:
+        version: 'latest'  # Specifies the version of kubectl to use
+
+    - name: Deploy to Kubernetes
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}  # Kubernetes configuration file stored as a GitHub secret
+      run: |
+        echo "$KUBE_CONFIG_DATA" | base64 --decode > $HOME/.kube/config  # Decodes and writes the Kubernetes config to the appropriate location
+        kubectl apply -f deployment.yaml  # Applies the deployment configuration to the Kubernetes cluster
+        kubectl apply -f service.yaml  # Applies the service configuration to the Kubernetes cluster
